@@ -1,22 +1,4 @@
-#define UNICODE
-#include <windows.h>
-#include <winioctl.h>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <iomanip>
-#include <cstring>
-#include <string>
-#include <algorithm>
-
-char driveLetter;
-
-std::wstring StringToWString(const std::string& str) {
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, NULL, 0);
-    std::wstring wstr(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], size_needed);
-    return wstr;
-}
+#include "readmft.h"
 
 void ReadMFTFromDisk() {
     std::string path = std::string("\\\\.\\") + driveLetter + ":";
@@ -79,28 +61,6 @@ void ReadMFTFromDisk() {
     outFile.close();
     CloseHandle(hDrive);
 }
-
-// Các hằng số
-const size_t RECORD_SIZE = 1024;
-const size_t SECTOR_SIZE = 512;
-
-#pragma pack(push, 1)
-struct MFTRecordHeader {
-    char signature[4];       // "FILE" nếu record hợp lệ; record bị xóa hoặc ghi đè có thể không có "FILE"
-    WORD fixupOffset;
-    WORD fixupSize;
-    ULONGLONG logSequenceNumber;
-    WORD sequenceNumber;
-    WORD hardLinkCount;
-    WORD firstAttributeOffset;
-    WORD flags;              // Bit 0: in-use; nếu bị xóa thì bit này không được set
-    DWORD usedEntrySize;
-    DWORD allocatedEntrySize;
-    ULONGLONG baseFileRecord;
-    WORD nextAttributeID;
-    // Các trường khác (nếu cần)...
-};
-#pragma pack(pop)
 
 // Hàm áp dụng fixup cho 1 record MFT
 bool ApplyFixup(BYTE* record, size_t recordSize) {
@@ -165,29 +125,6 @@ std::wstring ExtractFileName(BYTE* record) {
         offset += *(DWORD*)(record + offset + 4);
     }
     return L"Recovered_File.bin";
-}
-
-std::string WStringToString(const std::wstring& wstr) {
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, NULL, 0, NULL, NULL);
-    if (size_needed <= 0) {
-        return "";
-    }
-    std::string str(size_needed - 1, 0);
-    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &str[0], size_needed, NULL, NULL);
-    return str;
-}
-
-// Hàm chuyển chuỗi wstring về chữ hoa và loại bỏ khoảng trắng ở đầu/cuối
-std::wstring NormalizeVolumeName(const std::wstring& volName) {
-    std::wstring res = volName;
-    // Chuyển thành chữ hoa
-    std::transform(res.begin(), res.end(), res.begin(), ::towupper);
-    // Loại bỏ khoảng trắng ở đầu/cuối (nếu cần)
-    size_t start = res.find_first_not_of(L" \t\r\n");
-    size_t end = res.find_last_not_of(L" \t\r\n");
-    if (start != std::wstring::npos && end != std::wstring::npos)
-        res = res.substr(start, end - start + 1);
-    return res;
 }
 
 // Hàm phân tích 1 record MFT và nếu record đã bị xóa, giải mã các attribute $DATA
@@ -266,74 +203,4 @@ bool IsRecordEmpty(BYTE* record) {
             return false;
     }
     return true;
-}
-
-int main() {
-    SetConsoleOutputCP(CP_UTF8);
-
-    std::cout << "Nhập ổ đĩa mà bạn muốn tìm kiếm và khôi phục: ";
-    std::cin >> driveLetter;
-    ReadMFTFromDisk();
-
-    std::ifstream infile("mft_dump.bin", std::ios::binary);
-    if (!infile) {
-        std::cerr << "Không thể mở file mft_dump.bin\n";
-        return 1;
-    }
-    
-    // Lấy kích thước file và tính số record (mỗi record 1024 byte)
-    infile.seekg(0, std::ios::end);
-    size_t fileSize = infile.tellg();
-    infile.seekg(0, std::ios::beg);
-    
-    size_t numRecords = fileSize / RECORD_SIZE;
-    std::cout << "Số lượng record MFT: " << numRecords << "\n";
-    
-    // Đọc toàn bộ record vào vector
-    std::vector<std::vector<BYTE>> records(numRecords, std::vector<BYTE>(RECORD_SIZE));
-    for (size_t i = 0; i < numRecords; i++) {
-        infile.read(reinterpret_cast<char*>(records[i].data()), RECORD_SIZE);
-    }
-    infile.close();
-    
-    // Quét từng record:
-    for (size_t i = 0; i < numRecords; i++) {
-        
-        BYTE* record = records[i].data();
-        // Nếu record trống, bỏ qua
-        if (IsRecordEmpty(record))
-        {
-            std::cout << "Record #" << i << " trống!\n";
-            continue;
-        }
-
-        // In ra thông tin flag của record
-        MFTRecordHeader* header = reinterpret_cast<MFTRecordHeader*>(record);
-        std::cout << "Record #" << i << " Flags: " << std::hex << header->flags << std::dec << "\n";
-        std::cout << "Nội dung hex (64 byte đầu): ";
-        for (int j = 0; j < 64; j++) {
-            std::cout << std::hex << std::setfill('0') << std::setw(2)
-                        << (int)record[j] << " ";
-        }
-        std::cout << std::dec << "\n";
-        
-        // Kiểm tra signature của record
-        if (std::memcmp(record, "FILE", 4) != 0 && std::memcmp(record, "BAAD", 4) != 0) {
-            std::cout << "Record " << i << " có signature không chuẩn: \""
-                      << std::string((char*)record, 4) << "\"\n";
-        } else {
-            // Áp dụng fixup cho record
-            if (!ApplyFixup(record, RECORD_SIZE)) {
-                std::cerr << "[!] Record " << i << ": Lỗi fixup.\n";
-                continue;
-            }
-            // Nếu record bị xóa (flag in-use không được set), tiến hành giải mã cluster
-            if ((header->flags & 0x01) == 0 || header->allocatedEntrySize == 0) { 
-                std::cout << "Record #" << i << " có thể là file đã bị xóa!\n";
-                ExtractClustersFromRecord(record, i);
-            }
-        }
-    }
-    
-    return 0;
 }
