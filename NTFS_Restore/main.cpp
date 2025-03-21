@@ -1,7 +1,6 @@
 #include "readmft.h"
 #include <iomanip>
 #include <winioctl.h>
-#include <cstring>
 
 char driveLetter;
 
@@ -32,45 +31,37 @@ int main() {
         infile.read(reinterpret_cast<char*>(records[i].data()), RECORD_SIZE);
     }
     infile.close();
-    
-    // Quét từng record:
-    for (size_t i = 0; i < numRecords; i++) {
-        
-        BYTE* record = records[i].data();
-        // Nếu record trống, bỏ qua
-        if (IsRecordEmpty(record))
-        {
-            std::cout << "Record #" << i << " trống!\n";
-            continue;
-        }
 
-        // In ra thông tin flag của record
-        MFTRecordHeader* header = reinterpret_cast<MFTRecordHeader*>(record);
-        std::cout << "Record #" << i << " Flags: " << std::hex << header->flags << std::dec << "\n";
-        std::cout << "Nội dung hex (64 byte đầu): ";
-        for (int j = 0; j < 64; j++) {
-            std::cout << std::hex << std::setfill('0') << std::setw(2)
-                        << (int)record[j] << " ";
-        }
-        std::cout << std::dec << "\n";
-        
-        // Kiểm tra signature của record
-        if (std::memcmp(record, "FILE", 4) != 0 && std::memcmp(record, "BAAD", 4) != 0) {
-            std::cout << "Record " << i << " có signature không chuẩn: \""
-                      << std::string((char*)record, 4) << "\"\n";
-        } else {
-            // Áp dụng fixup cho record
-            if (!ApplyFixup(record, RECORD_SIZE)) {
-                std::cerr << "[!] Record " << i << ": Lỗi fixup.\n";
-                continue;
-            }
-            // Nếu record bị xóa (flag in-use không được set), tiến hành giải mã cluster
-            if ((header->flags & 0x01) == 0 || header->allocatedEntrySize == 0) { 
-                std::cout << "Record #" << i << " có thể là file đã bị xóa!\n";
-                ExtractClustersFromRecord(record, i);
-            }
-        }
-    }
+    bool checkDeleted = 0;
     
+    // Quét từng record đã bị xóa
+    for (size_t i = 0; i < numRecords; i++) {
+        BYTE* record = records[i].data();
+    
+        // Nếu record trống, bỏ qua
+        if (IsRecordEmpty(record)) continue;
+    
+        MFTRecordHeader* header = reinterpret_cast<MFTRecordHeader*>(record);
+    
+        // Nếu record bị xóa
+        if ((header->flags & 0x01) == 0 || header->allocatedEntrySize == 0) { 
+            checkDeleted = 1;
+            std::wstring fileName = ExtractFileName(record);
+            std::string utf8FileName = WStringToString(fileName);
+            
+            std::cout << "Record #" << i << " - Tập tin: " << utf8FileName << " (đã bị xóa)\n";
+            std::cout << "Bạn có muốn khôi phục tập tin này không? (y/n): ";
+            
+            char choice;
+            std::cin >> choice;
+            if (choice == 'y' || choice == 'Y') {
+                ExtractClustersFromRecord(record, i);
+                std::cout << "Đã khôi phục tập tin: " << utf8FileName << "\n";
+            }
+        }
+    }    
+
+    if (checkDeleted == 0) std::cout << "Không có Record nào bị xóa trong ổ đĩa!\n";
+
     return 0;
 }

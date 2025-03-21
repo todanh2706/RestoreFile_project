@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 #include "wstring_string.h"
 
 extern char driveLetter;

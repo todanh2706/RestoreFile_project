@@ -130,68 +130,44 @@ std::wstring ExtractFileName(BYTE* record) {
 // Hàm phân tích 1 record MFT và nếu record đã bị xóa, giải mã các attribute $DATA
 void ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
     MFTRecordHeader* header = reinterpret_cast<MFTRecordHeader*>(record);
-    // Kiểm tra flag: nếu bit 0 không được set thì record đã bị xóa
-    bool inUse = (header->flags & 0x0001) != 0;
-    if (inUse) {
-        // Chỉ xử lý record đã bị xóa
-        return;
-    }
-    std::cout << "Entry bị xóa: #" << recordIndex << "\n";
+    
+    // Nếu record bị xóa, ta cần đặt lại flag để đánh dấu nó là file hợp lệ
+    header->flags |= 0x01; // Đặt lại bit in-use
+
     size_t attrOffset = header->firstAttributeOffset;
-    // Duyệt các attribute trong record
     while (attrOffset < RECORD_SIZE) {
         DWORD attrType = *(DWORD*)(record + attrOffset);
-        if (attrType == 0xFFFFFFFF) {
-            break; // Kết thúc attribute
-        }
+        if (attrType == 0xFFFFFFFF) break; // Kết thúc attribute
         DWORD attrSize = *(DWORD*)(record + attrOffset + 4);
-        if (attrSize == 0 || attrSize > RECORD_SIZE) {
-            std::cerr << "[!] Entry #" << recordIndex << ": Kích thước attribute không hợp lệ (attrSize=" 
-                      << attrSize << ")\n";
-            break;
-        }
+        if (attrSize == 0 || attrSize > RECORD_SIZE) break;
+
         // Nếu attribute là $DATA (0x80)
         if (attrType == 0x80) {
-            // Kiểm tra non-resident flag (byte ở offset 8)
             BYTE nonResidentFlag = *(BYTE*)(record + attrOffset + 8);
-            if (nonResidentFlag == 1) {
-                // Với non-resident, runlist nằm trong attribute header.
-                // Offset của runlist được lưu tại offset + 20 (WORD)
-                WORD runListOffset = *(WORD*)(record + attrOffset + 20);
-                BYTE* runList = record + attrOffset + runListOffset;
-                // Xác định độ dài runlist bằng cách quét cho đến khi gặp byte 0 (không vượt quá attrSize)
-                size_t runlistLength = 0;
-                while ((attrOffset + runListOffset + runlistLength) < (attrOffset + attrSize) &&
-                       runList[runlistLength] != 0)
-                {
-                    runlistLength++;
-                }
-                
-                auto clusters = DecodeRunlist(runList, runlistLength);
-                if (!clusters.empty()) {
-                    std::cout << " - Cluster của entry #" << recordIndex << ": ";
-                    for (auto& p : clusters) {
-                        std::cout << "[" << p.first << " -> " << (p.first + p.second - 1) << "] ";
-                    }
-                    std::cout << "\n";
-                } else {
-                    std::cout << " - Entry #" << recordIndex << " không có runlist.\n";
-                }
-            } else {
-                std::cout << " - Entry #" << recordIndex << " có attribute $DATA dạng resident (không có runlist).\n";
+
+            if (nonResidentFlag == 0) {
+                // Nếu file là resident, ghi trực tiếp từ record MFT ra file
                 DWORD contentSize = *(DWORD*)(record + attrOffset + 16);
                 WORD contentOffset = *(WORD*)(record + attrOffset + 20);
                 BYTE* data = record + attrOffset + contentOffset;
-                std::string fileName = WStringToString((ExtractFileName(record)));
-                std::ofstream outFile((std::string(1, driveLetter) + ":\\" + fileName).c_str(), std::ios::binary);
+
+                // Tạo file khôi phục với đúng tên
+                std::wstring fileName = ExtractFileName(record);
+                std::string utf8FileName = WStringToString(fileName);
+                std::ofstream outFile(std::string(1, driveLetter) + ":\\" + utf8FileName, std::ios::binary);
+                if (!outFile) {
+                    std::cerr << "Không thể tạo file khôi phục!\n";
+                    return;
+                }
+
                 outFile.write(reinterpret_cast<const char*>(data), contentSize);
                 outFile.close();
-                
-                std::cout << "Đã khôi phục file " << fileName << " từ record #" << recordIndex 
-                          << " với kích thước " << contentSize << " bytes.\n";
 
+                std::cout << "Đã khôi phục file vào record #" << recordIndex << " thành công!\n";
             }
+            // Nếu file là non-resident, cần đọc từ cluster gốc
         }
+
         attrOffset += attrSize;
     }
 }
