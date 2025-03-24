@@ -62,7 +62,7 @@ void ReadMFTFromDisk() {
     CloseHandle(hDrive);
 }
 
-// Hàm áp dụng fixup cho 1 record MFT
+// Hàm áp dụng fixup cho 1 record MFT (không thay đổi)
 bool ApplyFixup(BYTE* record, size_t recordSize) {
     if (recordSize < SECTOR_SIZE) return false;
     WORD fixupOffset = *(WORD*)(record + 4);
@@ -127,14 +127,21 @@ std::wstring ExtractFileName(BYTE* record) {
     return L"Recovered_File.bin";
 }
 
-// Hàm phân tích 1 record MFT và nếu record đã bị xóa, giải mã các attribute $DATA
-void ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
+// Sửa đổi hàm phục hồi để xử lý cả resident và non-resident và trả về bool
+bool ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
     MFTRecordHeader* header = reinterpret_cast<MFTRecordHeader*>(record);
     
-    // Nếu record bị xóa, ta cần đặt lại flag để đánh dấu nó là file hợp lệ
+    // Nếu record bị xóa, đặt lại flag đánh dấu là file hợp lệ
     header->flags |= 0x01; // Đặt lại bit in-use
 
+    bool recovered = false;
+
     size_t attrOffset = header->firstAttributeOffset;
+    // Lấy tên file để phục vụ cho cả resident và non-resident
+    std::wstring fileName = ExtractFileName(record);
+    std::string utf8FileName = WStringToString(fileName);
+    std::string outputPath = std::string(1, driveLetter) + ":\\" + utf8FileName;
+
     while (attrOffset < RECORD_SIZE) {
         DWORD attrType = *(DWORD*)(record + attrOffset);
         if (attrType == 0xFFFFFFFF) break; // Kết thúc attribute
@@ -146,30 +153,88 @@ void ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
             BYTE nonResidentFlag = *(BYTE*)(record + attrOffset + 8);
 
             if (nonResidentFlag == 0) {
-                // Nếu file là resident, ghi trực tiếp từ record MFT ra file
+                // Resident: ghi trực tiếp từ record MFT ra file
                 DWORD contentSize = *(DWORD*)(record + attrOffset + 16);
                 WORD contentOffset = *(WORD*)(record + attrOffset + 20);
                 BYTE* data = record + attrOffset + contentOffset;
 
-                // Tạo file khôi phục với đúng tên
-                std::wstring fileName = ExtractFileName(record);
-                std::string utf8FileName = WStringToString(fileName);
-                std::ofstream outFile(std::string(1, driveLetter) + ":\\" + utf8FileName, std::ios::binary);
+                std::ofstream outFile(outputPath, std::ios::binary);
                 if (!outFile) {
                     std::cerr << "Không thể tạo file khôi phục!\n";
-                    return;
+                    return false;
                 }
-
                 outFile.write(reinterpret_cast<const char*>(data), contentSize);
                 outFile.close();
+                recovered = true;
+            } else {
+                // Non-resident: xử lý runlist
+                WORD runlistOffset = *(WORD*)(record + attrOffset + 32);
+                size_t runlistLength = attrSize - runlistOffset;
+                BYTE* runlist = record + attrOffset + runlistOffset;
 
-                std::cout << "Đã khôi phục file vào record #" << recordIndex << " thành công!\n";
+                auto clusters = DecodeRunlist(runlist, runlistLength);
+                // Mở ổ đĩa để đọc dữ liệu các cluster
+                std::string path = std::string("\\\\.\\") + driveLetter + ":";
+                HANDLE hDrive = CreateFileW(StringToWString(path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 
+                                              NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+                if (hDrive == INVALID_HANDLE_VALUE) {
+                    std::cerr << "Không thể mở ổ đĩa để đọc dữ liệu non-resident!\n";
+                    return false;
+                }
+                // Lấy thông tin volume để xác định kích thước cluster
+                NTFS_VOLUME_DATA_BUFFER volumeData;
+                DWORD bytesReturned;
+                if (!DeviceIoControl(hDrive, FSCTL_GET_NTFS_VOLUME_DATA, NULL, 0, 
+                                     &volumeData, sizeof(volumeData), &bytesReturned, NULL)) {
+                    std::cerr << "Lỗi khi lấy thông tin NTFS để đọc dữ liệu non-resident!\n";
+                    CloseHandle(hDrive);
+                    return false;
+                }
+                ULONGLONG bytesPerCluster = volumeData.BytesPerCluster;
+
+                std::ofstream outFile(outputPath, std::ios::binary);
+                if (!outFile) {
+                    std::cerr << "Không thể tạo file khôi phục!\n";
+                    CloseHandle(hDrive);
+                    return false;
+                }
+
+                // Đọc dữ liệu từng run và ghi nối tiếp vào file
+                for (auto &run : clusters) {
+                    LONGLONG lcn = run.first;
+                    ULONGLONG clusterCount = run.second;
+                    ULONGLONG byteOffset = lcn * bytesPerCluster;
+                    ULONGLONG byteCount = clusterCount * bytesPerCluster;
+
+                    LARGE_INTEGER li;
+                    li.QuadPart = byteOffset;
+                    if (SetFilePointerEx(hDrive, li, NULL, FILE_BEGIN) == 0) {
+                        std::cerr << "Không thể dịch con trỏ đọc trên ổ đĩa!\n";
+                        outFile.close();
+                        CloseHandle(hDrive);
+                        return false;
+                    }
+                    BYTE* buffer = new BYTE[byteCount];
+                    DWORD bytesRead;
+                    if (!ReadFile(hDrive, buffer, byteCount, &bytesRead, NULL) || bytesRead != byteCount) {
+                        std::cerr << "Lỗi đọc dữ liệu từ ổ đĩa!\n";
+                        delete[] buffer;
+                        outFile.close();
+                        CloseHandle(hDrive);
+                        return false;
+                    }
+                    outFile.write(reinterpret_cast<const char*>(buffer), byteCount);
+                    delete[] buffer;
+                }
+                outFile.close();
+                CloseHandle(hDrive);
+                recovered = true;
             }
-            // Nếu file là non-resident, cần đọc từ cluster gốc
+            break; // Xử lý attribute $DATA đầu tiên
         }
-
         attrOffset += attrSize;
     }
+    return recovered;
 }
 
 // Hàm kiểm tra xem record có toàn 0 hay không

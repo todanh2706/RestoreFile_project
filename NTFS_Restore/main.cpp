@@ -55,8 +55,11 @@ int main() {
             char choice;
             std::cin >> choice;
             if (choice == 'y' || choice == 'Y') {
-                ExtractClustersFromRecord(record, i);
-                std::cout << "Đã khôi phục tập tin: " << utf8FileName << "\n";
+                bool success = ExtractClustersFromRecord(record, i);
+                if (success)
+                    std::cout << "Đã khôi phục tập tin: " << utf8FileName << "\n";
+                else
+                    std::cout << "Khôi phục tập tin thất bại: " << utf8FileName << "\n";
             }
         }
     }    

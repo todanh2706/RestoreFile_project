@@ -36,5 +36,5 @@ struct MFTRecordHeader {
 bool ApplyFixup(BYTE* record, size_t recordSize);
 std::vector<std::pair<LONGLONG, ULONGLONG>> DecodeRunlist(BYTE* runlist, size_t runlistLength);
 std::wstring ExtractFileName(BYTE* record);
-void ExtractClustersFromRecord(BYTE* record, size_t recordIndex);
+bool ExtractClustersFromRecord(BYTE* record, size_t recordIndex);
 bool IsRecordEmpty(BYTE* record);
