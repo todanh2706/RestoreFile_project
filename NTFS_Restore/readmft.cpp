@@ -140,7 +140,7 @@ bool ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
     // Lấy tên file để phục vụ cho cả resident và non-resident
     std::wstring fileName = ExtractFileName(record);
     std::string utf8FileName = WStringToString(fileName);
-    std::string outputPath = std::string(1, driveLetter) + ":\\" + utf8FileName;
+    std::string outputPath = "RecoverFile\\" + utf8FileName;
 
     while (attrOffset < RECORD_SIZE) {
         DWORD attrType = *(DWORD*)(record + attrOffset);
@@ -157,6 +157,11 @@ bool ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
                 DWORD contentSize = *(DWORD*)(record + attrOffset + 16);
                 WORD contentOffset = *(WORD*)(record + attrOffset + 20);
                 BYTE* data = record + attrOffset + contentOffset;
+
+                if (!std::filesystem::exists(std::filesystem::path(outputPath).parent_path()))
+                {
+                    std::filesystem::create_directories(std::filesystem::path(outputPath).parent_path());
+                }
 
                 std::ofstream outFile(outputPath, std::ios::binary);
                 if (!outFile) {
