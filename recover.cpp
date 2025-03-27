@@ -320,26 +320,22 @@ Recover::~Recover()
     rs = nullptr;
 }
 
-FAT32::FAT32() {}
 
-FAT32::FAT32(const char driveLetter) : driveLetter(driveLetter) {}
 
-void FAT32::ReadMFTOrFATFromDisk()
-{
-    // Thêm code tại đây
-}
 
-void FAT32::FindAndRecover()
-{
-    // Thêm code tại đây
-}
 
-void FAT32::SetdriveLetter(const char c)
-{
-    driveLetter = c;
-}
 
-char FAT32::GetdriveLetter()
-{
-    return driveLetter;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
