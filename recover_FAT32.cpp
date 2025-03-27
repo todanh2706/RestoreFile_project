@@ -75,11 +75,10 @@ void FAT32::FindAndRecover()
 			std::vector<DeletedFile> lst = searchForDeletedFiles(_bpb, dwBytesRead, hDrive);
 			
 			printNameOfDeletedFile(lst);
-			std::string target;
-			std::cout << "Chose file: ";
-			std::cin.ignore();
-			std::getline(std::cin, target);
-			recoverFile(hDrive, _bpb, target);
+			int index;
+			std::cout << "Chose file (1 - " << lst.size() << ": ";
+			std::cin >> index;
+			recoverFile(hDrive, _bpb, lst[index - 1]);
 		
 			}
             char c;
@@ -91,6 +90,8 @@ void FAT32::FindAndRecover()
 	}
     CloseHandle(hDrive);
 }
+
+
 
 void FAT32::SetdriveLetter(const char c)
 {
@@ -344,17 +345,20 @@ int FAT32::getClusterCount(DIR _fpb, BPB _bpb, HANDLE hDrive) {
     return totalClusters;
 }
 
+
+
+
+
 bool FAT32::markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int numberOfCluster) {
     if (numberOfCluster <= 0) return false;
 
-
-    DWORD fatOffset = _bpb.size_Sector_Reserved * _bpb.bytes_Sector; // Vị trí FAT trong ổ đĩa
+    DWORD fatOffset = _bpb.size_Sector_Reserved * _bpb.bytes_Sector; // FAT start position
+    DWORD fatSize = _bpb.FATSz32 * _bpb.bytes_Sector; // Size of FAT Table
     DWORD cluster = startCluster;
     DWORD nextCluster;
     DWORD fatEntry;
     
-    // Đọc FAT
-    DWORD fatSize = _bpb.FATSz32 * _bpb.bytes_Sector; // Kích thước của FAT Table
+    // Read the FAT Table
     BYTE* fatTable = new BYTE[fatSize];
 
     DWORD bytesRead;
@@ -363,27 +367,51 @@ bool FAT32::markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int num
         delete[] fatTable;
         return false;
     }
-    DWORD existingValue;
-    memcpy(&existingValue, &fatTable[startCluster * 4], 4);
-    if (existingValue != 0x00000000) { 
+
+    // Verify startCluster is empty
+    if (*reinterpret_cast<DWORD*>(&fatTable[cluster * 4]) != 0x00000000) { 
         delete[] fatTable;
-        return false; // Return false if startCluster is already in use
+        return false; // Start cluster is already in use
     }
 
-    // Ghi giá trị liên tiếp vào FAT Table
-    for (int i = 0; i < numberOfCluster - 1; i++) {
+    int allocatedClusters = 0;
+    DWORD lastWrittenCluster = 0; 
+
+    while (allocatedClusters < numberOfCluster) {
+        // Search for the next available cluster
+        while (cluster < fatSize / 4 && *reinterpret_cast<DWORD*>(&fatTable[cluster * 4]) != 0x00000000) {
+            cluster++;  // Skip used clusters
+        }
+
+        // If we reach the end of the FAT without enough clusters, return failure
+        if (cluster >= fatSize / 4) {
+            delete[] fatTable;
+            return false;
+        }
+
+        // Look ahead for the next available cluster
         nextCluster = cluster + 1;
-        fatEntry = nextCluster;
-        
-        memcpy(&fatTable[cluster * 4], &fatEntry, 4); // Ghi vào FAT Table
+        while (nextCluster < fatSize / 4 && *reinterpret_cast<DWORD*>(&fatTable[nextCluster * 4]) != 0x00000000) {
+            nextCluster++;  // Find the next available cluster
+        }
+
+        // If we found a next available cluster, write the current one
+        if (nextCluster < fatSize / 4) {
+            fatEntry = nextCluster;  // Link to next cluster
+            memcpy(&fatTable[cluster * 4], &fatEntry, 4);
+            lastWrittenCluster = cluster;
+            allocatedClusters++;
+        }
+
+        // Move to the next cluster
         cluster = nextCluster;
     }
 
-    // Đánh dấu cluster cuối cùng là EOF (0x0FFFFFFF)
+    // Mark the last cluster as EOF
     fatEntry = 0x0FFFFFFF;
-    memcpy(&fatTable[cluster * 4], &fatEntry, 4);
+    memcpy(&fatTable[lastWrittenCluster * 4], &fatEntry, 4);
 
-    // Ghi lại FAT vào ổ đĩa
+    // Write the updated FAT table back to disk
     SetFilePointer(hDrive, fatOffset, NULL, FILE_BEGIN);
     DWORD bytesWritten;
     if (!WriteFile(hDrive, fatTable, fatSize, &bytesWritten, NULL)) {
@@ -455,7 +483,7 @@ bool FAT32::markClusterEOF(HANDLE hDrive, BPB _bpb, DWORD cluster) {
     return true;
 }
 
-void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target) {
+void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, DeletedFile delFile) {
     BYTE fileInfo[512];  
     DIR _fpb;            
     
@@ -505,9 +533,9 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target) {
                 if (pos != std::string::npos)
                     fileName = fileName.substr(0, pos);
                 
-                std::cout << "Found file: '" << fileName << "'" << std::endl;
+                std::cout << "Found file: '" << fileName << "' size: " << _fpb.fSize << std::endl;
           
-                if (fileName == target) {
+                if (fileName == delFile.fileName) {
                     std::cout << "File found. Recovering file entry..." << std::endl;
                     if(getClusterCount(_fpb, _bpb, hDrive) > 1){
                         isMoreCluster = true;
@@ -657,16 +685,18 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target) {
                  
                     // Mark the starting cluster as EOF in the FAT.
                     std::cerr << "Mark the starting cluster as EOF in the FAT." << std::endl;
-                    DWORD startingCluster = (_fpb.start_clus_high << 16) | _fpb.start_clus_low;
+                  
+                  
+                    std::cerr << "Start cluster: " << delFile.firstCluster << std::endl;
                     if(isMoreCluster){
                         int numCluster = getClusterCount(_fpb, _bpb, hDrive);
                         std::cout << "Recovering long files..." << std::endl;
-                        if(!markMultipleEOF(hDrive, _bpb, startingCluster, numCluster)){
-                            std::cerr << "Failed to mark cluster " << startingCluster << " as EOF." << std::endl;
+                        if(!markMultipleEOF(hDrive, _bpb, delFile.firstCluster, numCluster)){
+                            std::cerr << "Failed to mark cluster " << delFile.firstCluster << " as EOF." << std::endl;
                         }
                     }else{
-                        if (!markClusterEOF(hDrive, _bpb, startingCluster)) {
-                            std::cerr << "Failed to mark cluster " << startingCluster << " as EOF." << std::endl;
+                        if (!markClusterEOF(hDrive, _bpb, delFile.firstCluster)) {
+                            std::cerr << "Failed to mark cluster " << delFile.firstCluster << " as EOF." << std::endl;
                         }
                     }
                     return; // Exit after recovery.
