@@ -178,6 +178,11 @@ bool NTFS::ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
     std::string utf8FileName = WStringToString(fileName);
     std::string outputPath = "NTFS_Recovered_Files\\" + utf8FileName;
 
+    if (!std::filesystem::exists(std::filesystem::path(outputPath).parent_path()))
+    {
+        std::filesystem::create_directories(std::filesystem::path(outputPath).parent_path());
+    }
+
     while (attrOffset < RECORD_SIZE) {
         DWORD attrType = *(DWORD*)(record + attrOffset);
         if (attrType == 0xFFFFFFFF) break; // Kết thúc attribute
@@ -193,11 +198,6 @@ bool NTFS::ExtractClustersFromRecord(BYTE* record, size_t recordIndex) {
                 DWORD contentSize = *(DWORD*)(record + attrOffset + 16);
                 WORD contentOffset = *(WORD*)(record + attrOffset + 20);
                 BYTE* data = record + attrOffset + contentOffset;
-
-                if (!std::filesystem::exists(std::filesystem::path(outputPath).parent_path()))
-                {
-                    std::filesystem::create_directories(std::filesystem::path(outputPath).parent_path());
-                }
 
                 std::ofstream outFile(outputPath, std::ios::binary);
                 if (!outFile) {
