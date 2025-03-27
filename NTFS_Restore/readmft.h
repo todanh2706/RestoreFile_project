@@ -11,7 +11,6 @@
 #include "wstring_string.h"
 
 extern char driveLetter;
-void ReadMFTFromDisk();
 // Các hằng số
 const size_t RECORD_SIZE = 1024;
 const size_t SECTOR_SIZE = 512;

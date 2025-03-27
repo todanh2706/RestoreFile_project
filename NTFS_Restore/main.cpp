@@ -9,7 +9,6 @@ int main() {
 
     std::cout << "Nhập ổ đĩa mà bạn muốn tìm kiếm và khôi phục: ";
     std::cin >> driveLetter;
-    ReadMFTFromDisk();
 
     std::ifstream infile("mft_dump.bin", std::ios::binary);
     if (!infile) {
