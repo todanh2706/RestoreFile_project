@@ -156,7 +156,7 @@ public:
     bool markClusterEOF(HANDLE hDrive, BPB _bpb, DWORD cluster);
     
     bool markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int numberOfCluster);
-    void recoverFile(HANDLE hDrive, BPB _bpb, std::string target);
+    void recoverFile(HANDLE hDrive, BPB _bpb, DeletedFile delFile);
     
 
 private:
