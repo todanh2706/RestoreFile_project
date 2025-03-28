@@ -74,13 +74,17 @@ void FAT32::FindAndRecover()
               
 			}else{
 			std::vector<DeletedFile> lst = searchForDeletedFiles(_bpb, dwBytesRead, hDrive);
+			if(lst.empty())
+                std::cerr << "Không có tập tin nào bị xoá" << std::endl;
+            else{
+                printNameOfDeletedFile(lst);
+                int index;
+                std::cerr << "Chọn file (1 - " << lst.size() << "): ";
+                std::cin >> index;
+                std::cout << "==========================================================================\n";
+                recoverFile(hDrive, _bpb, lst[index - 1]);
+            }
 			
-			printNameOfDeletedFile(lst);
-			int index;
-			std::cerr << "Chọn file (1 - " << lst.size() << "): ";
-			std::cin >> index;
-            std::cout << "==========================================================================\n";
-			recoverFile(hDrive, _bpb, lst[index - 1]);
 		
 			}
             char c;
