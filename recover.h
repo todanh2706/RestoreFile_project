@@ -136,28 +136,33 @@ public:
     void SetdriveLetter(const char c);
     char GetdriveLetter();
     // ******************************************************* THÊM CODE XỬ LÍ FAT32 TẠI ĐÂY *******************************************************
-    
-    bool hasValidAttribute(BYTE state);
-    std::string extractLFN(const BYTE fInfo[32]);
-    std::string getShortFileName(DIR _fpb);
+
     void FindDate(WORD _fpb);
-    int getClusterCount(DIR _fpb, BPB _bpb, HANDLE hDrive);
-
-    
     bool listAllFilesAndFolders(BPB _bpb, DWORD dwBytesRead, HANDLE hDrive);
-
     void PrintFileInformation(DIR _fpb, std::string fileName );
     void printNameOfDeletedFile(std::vector<DeletedFile> lstOfFileName);
-
     void readAndOpenDrive(std::string &drive, HANDLE &hDrive);
     bool readBootSector(HANDLE hDrive, BPB& _bpb, BYTE bBootSector[512], DWORD dwBytesRead);
     std::vector<DeletedFile> searchForDeletedFiles(BPB _bpb, DWORD dwBytesRead, HANDLE hDrive);
-   
-    bool markClusterEOF(HANDLE hDrive, BPB _bpb, DWORD cluster);
+
+    //hàm hỗ trợ cho recover files
+        //hàm kiểm tra thuộc tính thư mục/tập tin
+        bool hasValidAttribute(BYTE state);
+        //các hàm khôi phục entry phụ (tên file)
+        std::string extractLFN(const BYTE fInfo[32]);
+        std::string getShortFileName(DIR _fpb);
+        std::string getFileName(DIR _fpb, std::vector<std::string> lfnEntries,  bool &isLFN, unsigned char firstLetter);
+        int getClusterCount(DIR _fpb, BPB _bpb, HANDLE hDrive);
+        bool setCheckSum(BYTE sectorBuffer[512], int start);
+        bool setOriginalEntries(BYTE sectorBuffer[512], bool &iLFN, int start);
+        //hàm hỗ trợ khôi phục file vào thư mục gốc
+        bool markClusterEOF(HANDLE hDrive, BPB _bpb, DWORD cluster);
+        bool markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int numberOfCluster);
     
-    bool markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int numberOfCluster);
-    void recoverFile(HANDLE hDrive, BPB _bpb, DeletedFile delFile);
-    
+        //hàm hỗ trợ khôi phục file vào thư mục chỉ định
+        bool recoverContiguousToNTFS(const std::string& path, HANDLE hDrive, const BPB& bpb, DWORD startCluster, DWORD fileSize);
+    //hàm khôi phục file
+    void recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state);
 
 private:
     char driveLetter;

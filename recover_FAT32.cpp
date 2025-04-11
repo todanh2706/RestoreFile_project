@@ -1,4 +1,7 @@
 #include "recover.h"
+#include <conio.h>
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 FAT32::FAT32() {}
 
@@ -64,7 +67,7 @@ void FAT32::FindAndRecover()
 		}
 		else
 		{
-            std::cerr << "1. Liệt cái files có trong ổ đĩa" << std::endl;
+            std::cerr << "1. Liệt kê cái files có trong ổ đĩa" << std::endl;
             std::cerr << "2. Khôi phục file" << std::endl;
 			int choice;
 			std::cerr << "Lựa chọn: ";
@@ -73,23 +76,39 @@ void FAT32::FindAndRecover()
 				listAllFilesAndFolders(_bpb, dwBytesRead, hDrive);
               
 			}else{
-			std::vector<DeletedFile> lst = searchForDeletedFiles(_bpb, dwBytesRead, hDrive);
-			if(lst.empty())
-                std::cerr << "Không có tập tin nào bị xoá" << std::endl;
-            else{
+                std::vector<DeletedFile> lst = searchForDeletedFiles(_bpb, dwBytesRead, hDrive);
+                if(lst.empty()){
+                    std::cerr << "Không có tập tin nào bị xoá!" << std::endl;
+                    return;
+                }
                 printNameOfDeletedFile(lst);
                 int index;
-                std::cerr << "Chọn file (1 - " << lst.size() << "): ";
+                std::cout << "Chọn tập tin khôi phục (chọn từ 1 - " << lst.size() << "): ";
                 std::cin >> index;
-                std::cout << "==========================================================================\n";
-                recoverFile(hDrive, _bpb, lst[index - 1]);
-            }
-			
+                std::string target = lst[index - 1].fileName;
+               
+               
+                std::cout << "======================================================\n";
+                std::cerr << "Tập tin khôi phục: " << target << std::endl;
+                std::cerr << "Chọn nơi khôi phục" << std::endl;
+                std::cerr << "1. Khôi phục vào thư mục mà tập tin bị xoá" << std::endl;
+                std::cerr << "2. Khôi mục vào thư mục chỉ định (FAT32_Recovered_Files)" << std::endl;
+                std::cerr << "Lựa chọn (1/2): ";
+                int choice;
+                std::cin >> choice;
+                std::cout << "======================================================\n";
+                if(choice == 1){
+                    recoverFile(hDrive, _bpb, target, 1);
+
+                }else{
+                    recoverFile(hDrive, _bpb, target, 0);
+                }
+
 		
 			}
-            char c;
-            std::cerr << "Nhập phím bất kì để thoát: ";
-            std::cin >> c;
+            std::cout << "======================================================\n";
+            std::cout << "(Nhấn phím bất kỳ để kết thức chương trình)";
+            getch();
           
 		}
 		CloseHandle(hDrive);
@@ -232,8 +251,7 @@ bool FAT32::readBootSector(HANDLE hDrive, BPB& _bpb, BYTE bBootSector[512], DWOR
 }
 
 void FAT32::PrintFileInformation(DIR _fpb, std::string fileName ){
-	// std::cout << "\nFILE INFORMATION:\n";
-    std::cerr << "\nTHÔNG TIN FILE:\n";
+	std::cout << "\nTHÔNG TIN THƯ MỤC/TẬP TIN:\n";
 	std::cout << "============================\n";
 	std::string attributes[6] = {"ReadOnly", "Hidden", "System", "VolLabel", "Directory", "Archive"};
     std::string str = "";
@@ -246,20 +264,15 @@ void FAT32::PrintFileInformation(DIR _fpb, std::string fileName ){
 			std::cout << attributes[i];  // Print remaining attributes with a comma
 		}
 	}
-	std::cerr << std::endl;
-	std::cerr << "Tên tập tin/thư mục: " << fileName << std::endl;
-    std::cerr << "Số cluster bắt đầu: " << _fpb.start_clus_low << "\n";
-    std::cerr << "Kích thước tập tin: " << _fpb.fSize << " bytes\n";
-    std::cerr << "Ngày truy cập cuối: ";
-    FindDate(_fpb.date);
-    std::cerr << "\n";
+	std::cout << std::endl;
+	std::cout << "Tên: " << fileName << std::endl;
 
-	// printf("Starting cluster number: %d\n", _fpb.start_clus_low);
-	// printf("File size: %d bytes\n", _fpb.fSize);
-	// printf("Last day accessed: ");
-	// FindDate(_fpb.date);
-	// printf("\n");
 
+	printf("Cluster bắt đầu: %d\n", _fpb.start_clus_low);
+	printf("Kích thước: %d bytes\n", _fpb.fSize);
+	printf("Ngày truy cập gần nhất: ");
+	FindDate(_fpb.date);
+	printf("\n");
 }
 
 std::vector<DeletedFile> FAT32::searchForDeletedFiles(BPB _bpb, DWORD dwBytesRead, HANDLE hDrive) {
@@ -340,9 +353,9 @@ std::vector<DeletedFile> FAT32::searchForDeletedFiles(BPB _bpb, DWORD dwBytesRea
 }
 
 void FAT32::printNameOfDeletedFile(std::vector<DeletedFile> lstOfFileName){
-	std::cerr << "DANH SÁCH CÁC FILE BỊ XOÁ" << std::endl;
+	std::cout << "DANH SÁCH CÁC TẬP TIN BỊ XOÁ" << std::endl;
 	for(int i = 0; i < lstOfFileName.size(); i++){
-        std::cout << i + 1 << " " << lstOfFileName[i].fileName << "-" << std::dec << lstOfFileName[i].entryOffset << "-" << lstOfFileName[i].firstCluster << std::endl;
+        std::cout << i + 1 << "." << lstOfFileName[i].fileName << "-" << std::dec << lstOfFileName[i].entryOffset << "-" << lstOfFileName[i].firstCluster << std::endl;
     }
 }
 
@@ -356,78 +369,60 @@ int FAT32::getClusterCount(DIR _fpb, BPB _bpb, HANDLE hDrive) {
     }
     return totalClusters;
 }
-
 bool FAT32::markMultipleEOF(HANDLE hDrive, BPB _bpb, DWORD startCluster, int numberOfCluster) {
     if (numberOfCluster <= 0) return false;
 
-    DWORD fatOffset = _bpb.size_Sector_Reserved * _bpb.bytes_Sector; // FAT start position
-    DWORD fatSize = _bpb.FATSz32 * _bpb.bytes_Sector; // Size of FAT Table
-    DWORD cluster = startCluster;
-    DWORD nextCluster;
-    DWORD fatEntry;
-    
-    // Read the FAT Table
-    BYTE* fatTable = new BYTE[fatSize];
+    DWORD fatOffset = _bpb.size_Sector_Reserved * _bpb.bytes_Sector;       // FAT start offset
+    DWORD fatSize = _bpb.FATSz32 * _bpb.bytes_Sector;                      // FAT size in bytes
 
-    DWORD bytesRead;
+    // Allocate memory for FAT table
+    BYTE* fatTable = new BYTE[fatSize];
+    DWORD bytesRead = 0;
+
+    // Read FAT table into memory
     SetFilePointer(hDrive, fatOffset, NULL, FILE_BEGIN);
-    if (!ReadFile(hDrive, fatTable, fatSize, &bytesRead, NULL)) {
+    if (!ReadFile(hDrive, fatTable, fatSize, &bytesRead, NULL) || bytesRead != fatSize) {
+        std::cerr << "Failed to read FAT table." << std::endl;
         delete[] fatTable;
         return false;
     }
 
-    // Verify startCluster is empty
-    if (*reinterpret_cast<DWORD*>(&fatTable[cluster * 4]) != 0x00000000) { 
+    DWORD cluster = startCluster;
+
+    // Ensure the first cluster is free
+    DWORD currentValue;
+    memcpy(&currentValue, &fatTable[cluster * 4], 4);
+    if (currentValue != 0x00000000) {
+        std::cerr << "Start cluster " << cluster << " is not free (value: 0x" 
+                  << std::hex << currentValue << ")." << std::endl;
         delete[] fatTable;
-        return false; // Start cluster is already in use
+        return false;
     }
 
-    int allocatedClusters = 0;
-    DWORD lastWrittenCluster = 0; 
-
-    while (allocatedClusters < numberOfCluster) {
-        // Search for the next available cluster
-        while (cluster < fatSize / 4 && *reinterpret_cast<DWORD*>(&fatTable[cluster * 4]) != 0x00000000) {
-            cluster++;  // Skip used clusters
-        }
-
-        // If we reach the end of the FAT without enough clusters, return failure
-        if (cluster >= fatSize / 4) {
-            delete[] fatTable;
-            return false;
-        }
-
-        // Look ahead for the next available cluster
-        nextCluster = cluster + 1;
-        while (nextCluster < fatSize / 4 && *reinterpret_cast<DWORD*>(&fatTable[nextCluster * 4]) != 0x00000000) {
-            nextCluster++;  // Find the next available cluster
-        }
-
-        // If we found a next available cluster, write the current one
-        if (nextCluster < fatSize / 4) {
-            fatEntry = nextCluster;  // Link to next cluster
-            memcpy(&fatTable[cluster * 4], &fatEntry, 4);
-            lastWrittenCluster = cluster;
-            allocatedClusters++;
-        }
-
-        // Move to the next cluster
+    // Mark the cluster chain
+    for (int i = 0; i < numberOfCluster - 1; ++i) {
+        DWORD nextCluster = cluster + 1;
+        memcpy(&fatTable[cluster * 4], &nextCluster, 4);
         cluster = nextCluster;
     }
 
     // Mark the last cluster as EOF
-    fatEntry = 0x0FFFFFFF;
-    memcpy(&fatTable[lastWrittenCluster * 4], &fatEntry, 4);
+    DWORD eofMarker = 0x0FFFFFFF;
+    memcpy(&fatTable[cluster * 4], &eofMarker, 4);
 
-    // Write the updated FAT table back to disk
+    // Write FAT back to disk
     SetFilePointer(hDrive, fatOffset, NULL, FILE_BEGIN);
-    DWORD bytesWritten;
-    if (!WriteFile(hDrive, fatTable, fatSize, &bytesWritten, NULL)) {
+    DWORD bytesWritten = 0;
+    if (!WriteFile(hDrive, fatTable, fatSize, &bytesWritten, NULL) || bytesWritten != fatSize) {
+        std::cerr << "Failed to write FAT table back to disk." << std::endl;
         delete[] fatTable;
         return false;
     }
 
     delete[] fatTable;
+    // std::cerr << "[+] Successfully marked " << numberOfCluster 
+    //           << " clusters starting at " << startCluster << " as used with EOF." << std::endl;
+    std::cerr << "[+]Tập tin khôi phục thành công" << std::endl;
     return true;
 }
 
@@ -487,22 +482,165 @@ bool FAT32::markClusterEOF(HANDLE hDrive, BPB _bpb, DWORD cluster) {
         return false;
     }
 
-    // std::cout << "Cluster " << cluster << " marked as EOF in FAT." << std::endl;
+    std::cout << "Cluster " << cluster << " marked as EOF in FAT." << std::endl;
+    std::cerr << "Tập tin khôi phục thành công" << std::endl;
     return true;
 }
 
-void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, DeletedFile delFile) {
+bool FAT32::setCheckSum(BYTE sectorBuffer[512], int start){
+    BYTE sfn[11];
+    for(int i = 0; i < 11; i++){
+        sfn[i]= sectorBuffer[i + start];
+    }
+  
+    BYTE targetChecksum = sectorBuffer[start -32 + 13];  // Desired checksum
+    BYTE sum = 0;
+    
+    // Compute initial checksum
+    for (int i = 0; i < 11; i++) {
+        sum = ((sum >> 1) | (sum << 7)) + sfn[i];
+    }
+
+    // Adjust first byte to match the target checksum
+    for (DWORD firstByte = 0; firstByte <= 0xFF; firstByte++) {
+        sfn[0] = (BYTE)firstByte; // Modify first byte
+        
+        // Recalculate checksum
+        sum = 0;
+        for (int i = 0; i < 11; i++) {
+            sum = ((sum >> 1) | (sum << 7)) + sfn[i];
+        }
+
+        if (sum == targetChecksum) {
+            sectorBuffer[start]  = sfn[0];
+            std::cout << "Finishing checkusm sucessfully." << std::endl;
+            break;
+        }
+    }
+    return true;
+}
+
+bool FAT32::setOriginalEntries(BYTE sectorBuffer[512], bool &isLFN, int start){
+     // Prepare for LFN entry restoration
+     int subEntry = start - 32;
+     BYTE sequence = 0x01;
+     
+     // Temporary storage for original LFN entries
+     BYTE originalLFNEntries[10][32];  // Assuming max 10 LFN entries
+     int lfnEntryCount = 0;
+    
+
+     // Collect original LFN entries
+     std::cout << "Sub entry: " << subEntry << std::endl;
+     while (subEntry >= 0 && 
+            sectorBuffer[subEntry + 11] == 0x0F && 
+            sectorBuffer[subEntry] == 0xE5 && 
+            lfnEntryCount < 10) {
+         // Store the original entry
+         memcpy(originalLFNEntries[lfnEntryCount], &sectorBuffer[subEntry], 32);
+         lfnEntryCount++;
+         subEntry -= 32;
+         isLFN = true;
+         std::cout << "Collect LFN entry: " << lfnEntryCount << " " << subEntry << std::endl;
+     }
+   
+     // Restore LFN entries in reverse order
+     //=================================================
+     for (int i = 0; i < lfnEntryCount; i++) {
+         // Calculate the actual offset to restore
+         DWORD restoreOffset = start - (32 * (i + 1));
+     
+         // Copy original entry
+         memcpy(&sectorBuffer[restoreOffset], originalLFNEntries[i], 32);
+         
+         // Modify sequence number
+         if (i == lfnEntryCount - 1) {
+             // Last entry (first in sequence) gets 0x40 | sequence
+             sectorBuffer[restoreOffset] = 0x40 | sequence;
+         } else {
+             // Other entries get sequential numbers
+             sectorBuffer[restoreOffset] = sequence;
+         }
+         sequence++;
+     }
+     return true;
+}
+
+
+bool FAT32::recoverContiguousToNTFS(const std::string& path, HANDLE hDrive, const BPB& bpb, DWORD startCluster, DWORD fileSize) {
+    DWORD bytesPerCluster = bpb.bytes_Sector * bpb.sec_Cluster;
+    DWORD totalClusters = (fileSize + bytesPerCluster - 1) / bytesPerCluster;
+    DWORD firstDataSector = bpb.size_Sector_Reserved + (bpb.fatCount * bpb.FATSz32);
+
+    std::ofstream out(path, std::ios::binary);
+    if (!out.is_open()) {
+        std::cerr << "[-] Failed to open output file." << std::endl;
+        return false;
+    }
+
+    for (DWORD i = 0; i < totalClusters; ++i) {
+        DWORD cluster = startCluster + i;
+        DWORD sector = firstDataSector + (cluster - 2) * bpb.sec_Cluster;
+        DWORD offset = sector * bpb.bytes_Sector;
+
+        std::vector<BYTE> buffer(bytesPerCluster);
+        LARGE_INTEGER pos;
+        pos.QuadPart = offset;
+        DWORD bytesRead = 0;
+
+        if (!SetFilePointerEx(hDrive, pos, NULL, FILE_BEGIN) ||
+            !ReadFile(hDrive, buffer.data(), bytesPerCluster, &bytesRead, NULL)) {
+            std::cerr << "[-] Failed to read cluster #" << cluster << " at offset " << offset << std::endl;
+            return false;
+        }
+
+        DWORD toWrite = MIN(fileSize, bytesPerCluster);
+        out.write(reinterpret_cast<char*>(buffer.data()), toWrite);
+        // std::cout << "[+] Recovered cluster #" << cluster << ", wrote " << toWrite << " bytes" << std::endl;
+
+        fileSize -= toWrite;
+    }
+
+    out.close();
+    std::cout << "[+] Tập tin khôi phục thành công. Output: " << path << std::endl;
+    return true;
+}
+
+
+std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> lfnEntries, bool &isLFN, unsigned char firstLetter){
+    std::string fileName;
+    if (!lfnEntries.empty()) {
+        isLFN = true;
+        for (auto it = lfnEntries.rbegin(); it != lfnEntries.rend(); ++it) {
+            fileName += *it;
+        }
+        lfnEntries.clear();
+    } else {
+        fileName = (getShortFileName(_fpb));
+        return fileName;
+    }
+    if(isLFN)
+        fileName[0] = firstLetter;
+    else
+        fileName[0] = '_';
+    size_t pos = fileName.find('\0');
+    if (pos != std::string::npos)
+        fileName = fileName.substr(0, pos);
+    return fileName;
+}
+
+void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) {
     BYTE fileInfo[512];  
     DIR _fpb;            
     
     // Calculate absolute offset of the root directory.
-    DWORD rootDirOffset = (delFile.entryOffset / 512) * 512;
+    int rootDirStart = _bpb.size_Sector_Reserved + (_bpb.fatCount * _bpb.FATSz32);
+    DWORD rootDirOffset = rootDirStart * _bpb.bytes_Sector; 
     DWORD bytesRead;
     std::vector<std::string> lfnEntries;
     
     if (SetFilePointer(hDrive, rootDirOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-        // std::cerr << "Error setting file pointer to root directory" << std::endl;
-        std::cerr << "Lỗi khi đặt con trỏ tập tin đến thư mục gốc" << std::endl;
+        std::cerr << "Error setting file pointer to root directory" << std::endl;
         return;
     }
     
@@ -521,211 +659,113 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, DeletedFile delFile) {
                 lfnEntries.push_back((extractLFN(fileInfo + start)));
                 continue;
             }
-            
+       
             if (static_cast<unsigned char>(_fpb.fName[0]) == 0xE5 && hasValidAttribute(_fpb.state)) {
-                std::string fileName;
-                if (!lfnEntries.empty()) {
-                    isLFN = true;
-                    for (auto it = lfnEntries.rbegin(); it != lfnEntries.rend(); ++it) {
-                        fileName += *it;
-                    }
-                    lfnEntries.clear();
-                } else {
-                    fileName = (getShortFileName(_fpb));
-                }
-                if(isLFN)
-                    fileName[0] = firstLetter;
-                else
-                    fileName[0] = '_';
-                size_t pos = fileName.find('\0');
-                if (pos != std::string::npos)
-                    fileName = fileName.substr(0, pos);
-   
-                if (fileName == delFile.fileName) {
-                    // std::cout << "File found. Recovering file entry..." << std::endl;
-                    std::cerr << "Đã tìm thấy tập tin. Đang khôi phục entry tập tin..." << std::endl;
-                    if(getClusterCount(_fpb, _bpb, hDrive) > 1){
-                        isMoreCluster = true;
-                    }else{
-                        // std::cout << "File has 1 cluster" << std::endl;
-                        std::cerr << "Tập tin có 1 cluster" << std::endl;
-                    }
+                std::string fileName = getFileName(_fpb, lfnEntries, isLFN, firstLetter);
 
-                    // Calculate the absolute offset of this directory entry.
-                    DWORD fileEntryOffset = rootDirOffset + currentSectorOffset + start;
-                    
-                    // Lock and dismount the volume.
-                    DWORD bytesReturned;
-                    if (!DeviceIoControl(hDrive, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &bytesReturned, NULL)) {
-                        //std::cerr << "Error locking volume. Error code: " << GetLastError() << std::endl;
-                        std::cerr << "Lỗi khi khóa volume. Mã lỗi: " << GetLastError() << std::endl;
-                        return;
-                    }else{
-                        //std::cerr << "Sucessfully locking volume" << std::endl;
-                        std::cerr << "Đã khóa volume thành công" << std::endl;
-                    }
-                    if (!DeviceIoControl(hDrive, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &bytesReturned, NULL)) {
-                        //std::cerr << "Error dismounting volume. Error code: " << GetLastError() << std::endl;
-                        std::cerr << "Lỗi khi unmount volume. Mã lỗi: " << GetLastError() << std::endl;
-                        return;
-                    }
-                    // Prepare full sector buffer
-                    BYTE sectorBuffer[512]; 
-                    
-                    // Set file pointer to the start of the sector containing the file entry
-                    DWORD sectorStartOffset = rootDirOffset + currentSectorOffset;
+                std::cout << fileName << std::endl;
+              
+                
+                if (fileName == target) {
+                    if(state){
+                        std::cout << "File found. Recovering file entry..." << std::endl;
+                        if(getClusterCount(_fpb, _bpb, hDrive) > 1){
+                            isMoreCluster = true;
+                        }else{
+                            std::cout << "File has 1 cluster" << std::endl;
+                        }
 
-                    if (SetFilePointer(hDrive, sectorStartOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-                        //std::cerr << "Error setting file pointer to sector start" << std::endl;
-                        std::cerr << "Lỗi khi đặt con trỏ tập tin đến đầu sector" << std::endl;
-                        return;
-                    }
-           
-                    // Read the full sector
-                    if (!ReadFile(hDrive, sectorBuffer, 512, &bytesRead, NULL) || bytesRead != 512) {
-                        // std::cerr << "Error reading sector" << std::endl;
-                        std::cerr << "Lỗi khi đọc sector" << std::endl;
-                        return;
-                    }
-
-                    
-                    // Prepare for LFN entry restoration
-                    int subEntry = start - 32;
-                    BYTE sequence = 0x01;
-                    
-                    // Temporary storage for original LFN entries
-                    BYTE originalLFNEntries[10][32];  // Assuming max 10 LFN entries
-                    int lfnEntryCount = 0;
-                   
-
-                    // Collect original LFN entries
-                    std::cerr << "Tiến hành thu thập entry phụ..." << std::endl;
-                    std::cerr << "\tEntry phụ đầu tiên: " << subEntry << std::endl;
-                    std::cerr << "\tTiến hành kiểm tra các entry phụ..." << std::endl;
-                    while (subEntry >= 0 && 
-                           sectorBuffer[subEntry + 11] == 0x0F && 
-                           sectorBuffer[subEntry] == 0xE5 && 
-                           lfnEntryCount < 10) {
-                        // Store the original entry
-                        memcpy(originalLFNEntries[lfnEntryCount], &sectorBuffer[subEntry], 32);
-                        lfnEntryCount++;
-                        subEntry -= 32;
-                        isLFN = true;
-                        std::cout << "\tThu thập LFN entry: " << lfnEntryCount << " " << subEntry << std::endl;
-                    }
-                  
-                    // Restore LFN entries in reverse order
-                    //=================================================
-                    for (int i = 0; i < lfnEntryCount; i++) {
-                        // Calculate the actual offset to restore
-                        DWORD restoreOffset = start - (32 * (i + 1));
-                    
-                        // Copy original entry
-                        memcpy(&sectorBuffer[restoreOffset], originalLFNEntries[i], 32);
+                        // Calculate the absolute offset of this directory entry.
+                        DWORD fileEntryOffset = rootDirOffset + currentSectorOffset + start;
                         
-                        // Modify sequence number
-                        if (i == lfnEntryCount - 1) {
-                            // Last entry (first in sequence) gets 0x40 | sequence
-                            sectorBuffer[restoreOffset] = 0x40 | sequence;
-                        } else {
-                            // Other entries get sequential numbers
-                            sectorBuffer[restoreOffset] = sequence;
+                        // Lock and dismount the volume.
+                        DWORD bytesReturned;
+                        if (!DeviceIoControl(hDrive, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &bytesReturned, NULL)) {
+                            std::cerr << "Error locking volume. Error code: " << GetLastError() << std::endl;
+                            return;
+                        }else{
+                            std::cerr << "Sucessfully locking volume" << std::endl;
                         }
-                        sequence++;
-                    }
+                        if (!DeviceIoControl(hDrive, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &bytesReturned, NULL)) {
+                            std::cerr << "Error dismounting volume. Error code: " << GetLastError() << std::endl;
+                            return;
+                        }
+                        // Prepare full sector buffer
+                        BYTE sectorBuffer[512]; 
+                        // Set file pointer to the start of the sector containing the file entry
+                        DWORD sectorStartOffset = rootDirOffset + currentSectorOffset;
 
-                    // Modify the main directory entry and calculate checksum
-                     //set checksum=================================================
-                    //=============================================================
-                  
-                    if(isLFN){
-                        // std::cout << "Calculating checksum..." << std::endl;
-                        std::cout << "\tĐang tính toán checksum..." << std::endl;
-                        BYTE sfn[11];
-                        for(int i = 0; i < 11; i++){
-                            sfn[i]= sectorBuffer[i + start];
+                        if (SetFilePointer(hDrive, sectorStartOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+                            std::cerr << "Error setting file pointer to sector start" << std::endl;
+                            return;
                         }
+                    
+                        if (!ReadFile(hDrive, sectorBuffer, 512, &bytesRead, NULL) || bytesRead != 512) {
+                            std::cerr << "Error reading sector" << std::endl;
+                            return;
+                        }
+                        
+                        
+                        //Recover sub-entries
+                        setOriginalEntries(sectorBuffer, isLFN, start);
+
+                        //Recover checksum
+                        if(isLFN){
+                            std::cout << "Calculating checksum..." << std::endl;
+                            setCheckSum(sectorBuffer, start);
+                        }else{
+                            std::cout << "Not check LFN. Set first letter of file to '_'" << std::endl;
+                            sectorBuffer[start] = '_';
+                        }
+
+                        // Set file pointer back to sector start for writing
+                        if (SetFilePointer(hDrive, sectorStartOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+                            std::cerr << "Error setting file pointer for writing" << std::endl;
+                            return;
+                        }
+                
+                        
+                        // Write back the entire sector
+                        DWORD bytesWritten;
+                        if (!WriteFile(hDrive, sectorBuffer, 512, &bytesWritten, NULL) || bytesWritten != 512) {
+                            std::cerr << "Error writing sector at offset: " << sectorStartOffset 
+                                    << ". Error code: " << GetLastError() << std::endl;
+                            return;
+                        }
+
+                        // Mark the starting cluster as EOF in the FAT.
+                        // std::cerr << "Mark the starting cluster as EOF in the FAT." << std::endl;
+                        DWORD startingCluster = (_fpb.start_clus_high << 16) | _fpb.start_clus_low;
+                        if(isMoreCluster){
+                            int numCluster = getClusterCount(_fpb, _bpb, hDrive);
+                            std::cout << "Recovering long files..." << numCluster  << std::endl;
+                            if(!markMultipleEOF(hDrive, _bpb, startingCluster, numCluster)){
+                                std::cerr << "Failed to mark cluster " << startingCluster << " as EOF." << std::endl;
+                                return;
+                            }
+                           
+                        }else{
+                            if (!markClusterEOF(hDrive, _bpb, startingCluster)) {
+                                std::cerr << "Failed to mark cluster " << startingCluster << " as EOF." << std::endl;
+                            }
+                        }
+                        return; // Exit after recovery.
+                    }else{
+                         // Recovery to NTFS path
+                        
                       
-                        BYTE targetChecksum = sectorBuffer[start -32 + 13];  // Desired checksum
-                        BYTE sum = 0;
-                        
-                        // Compute initial checksum
-                        for (int i = 0; i < 11; i++) {
-                            sum = ((sum >> 1) | (sum << 7)) + sfn[i];
-                        }
-                    
-                        // Adjust first byte to match the target checksum
-                        for (DWORD firstByte = 0; firstByte <= 0xFF; firstByte++) {
-                            sfn[0] = (BYTE)firstByte; // Modify first byte
-                            
-                            // Recalculate checksum
-                            sum = 0;
-                            for (int i = 0; i < 11; i++) {
-                                sum = ((sum >> 1) | (sum << 7)) + sfn[i];
-                            }
-                    
-                            if (sum == targetChecksum) {
-                                sectorBuffer[start]  = sfn[0];
-                                std::cerr << "\t==>Thành công tính checkusm." << std::endl;
-                                std::cerr << "\t==>Hoàn thành thu thập entry phụ." << std::endl;
-                                break;
-                            }
-                        }
-                        
-                        
-                    }else{
-                        // std::cout << "Not check LFN. Set first letter of file to '_'" << std::endl;
-                        std::cout << "==> Không kiểm tra LFN. Đặt chữ cái đầu tiên của tập tin thành '_'" << std::endl;
-                        sectorBuffer[start] = '_';
-                    }
+                        DWORD startingCluster = (_fpb.start_clus_high << 16) | _fpb.start_clus_low;
+                        std::string outputPath = "FAT32_Recovered_Files\\" + fileName;
 
-                   
-                    
-                   
-                   
-                    // Set file pointer back to sector start for writing
-                    if (SetFilePointer(hDrive, sectorStartOffset, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
-                        // std::cerr << "Error setting file pointer for writing" << std::endl;
-                        std::cerr << "Lỗi khi đặt con trỏ tập tin để ghi" << std::endl;
+                        if (!std::filesystem::exists(std::filesystem::path(outputPath).parent_path()))
+                        {
+                            std::filesystem::create_directories(std::filesystem::path(outputPath).parent_path());
+                        }
+          
+                        recoverContiguousToNTFS(outputPath, hDrive, _bpb, startingCluster, _fpb.fSize);
                         return;
                     }
-                    std::cerr << "Đã đặt con trỏ tập tin về đầu sector để bắt đầu ghi" << std::endl;
-                    
-                    // Write back the entire sector
-                    DWORD bytesWritten;
-                    if (!WriteFile(hDrive, sectorBuffer, 512, &bytesWritten, NULL) || bytesWritten != 512) {
-                        // std::cerr << "Error writing sector at offset: " << sectorStartOffset 
-                        //           << ". Error code: " << GetLastError() << std::endl;
-                        std::cerr << "Lỗi khi ghi sector tại offset: " << sectorStartOffset 
-                                  << ". Mã lỗi: " << GetLastError() << std::endl;
-                        return;
-                    }
-
-                 
-                    // // Mark the starting cluster as EOF in the FAT.
-                    // std::cerr << "Mark the starting cluster as EOF in the FAT." << std::endl;
-                    std::cerr << "\tBắt đầu đánh dấu cluster bắt đầu là EOF trong FAT..." << std::endl;
-                  
-                    std::cerr << "\tStart cluster: " << delFile.firstCluster << std::endl;
-                    if(isMoreCluster){
-                        int numCluster = getClusterCount(_fpb, _bpb, hDrive);
-                        // std::cout << "Recovering long files..." << std::endl;
-                        std::cerr << "\tĐang khôi phục tập tin dài..." << std::endl;
-                        if(!markMultipleEOF(hDrive, _bpb, delFile.firstCluster, numCluster)){
-                            //std::cerr << "Failed to mark cluster " << delFile.firstCluster << " as EOF." << std::endl;
-                            std::cerr << "Không thể đánh dấu cluster " << delFile.firstCluster << " là EOF." << std::endl;
-                        }else{
-                            std::cerr << "==>Khôi phục tập tin thành công" << std::endl;
-                        }
-                    }else{
-                        if (!markClusterEOF(hDrive, _bpb, delFile.firstCluster)) {
-                            std::cerr << "Failed to mark cluster " << delFile.firstCluster << " as EOF." << std::endl;
-                        }else{
-                            std::cerr << "==>Khôi phục tập tin thành công" << std::endl;
-                        }
-                    }
-                    return; // Exit after recovery.
-                }
+            }
             }
             
             if (_fpb.fName[0] == 0x00) {
