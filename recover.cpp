@@ -21,11 +21,8 @@ void NTFS::ReadMFTOrFATFromDisk() {
         return;
     }
 
-    LARGE_INTEGER mftSector;
-    mftSector.QuadPart = volumeData.MftStartLcn.QuadPart * volumeData.BytesPerCluster / volumeData.BytesPerSector;
-
     LARGE_INTEGER byteOffset;
-    byteOffset.QuadPart = mftSector.QuadPart * volumeData.BytesPerSector;
+    byteOffset.QuadPart = volumeData.MftStartLcn.QuadPart * volumeData.BytesPerCluster;
 
     if (SetFilePointerEx(hDrive, byteOffset, NULL, FILE_BEGIN) == 0) {
         std::cerr << "Không thể dịch con trỏ đọc! Mã lỗi: " << GetLastError() << std::endl;
