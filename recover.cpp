@@ -30,10 +30,7 @@ void NTFS::ReadMFTOrFATFromDisk() {
         return;
     }
 
-    LARGE_INTEGER mftSize;
-    mftSize.QuadPart = volumeData.MftValidDataLength.QuadPart;
-
-    size_t numRecords = static_cast<size_t>(mftSize.QuadPart / RECORD_SIZE);
+    size_t numRecords = static_cast<size_t>(volumeData.MftValidDataLength.QuadPart / RECORD_SIZE);
 
     DWORD bytesRead;
     bool readError = false;
