@@ -128,7 +128,7 @@ char FAT32::GetdriveLetter()
 
 bool FAT32::hasValidAttribute(BYTE state) {
     return state == 0x01 || state == 0x02 || state == 0x04 ||
-           state == 0x08 || state == 0x10 || state == 0x20;
+           state == 0x08  || state == 0x20;
 }
 
 std::string FAT32::getShortFileName(DIR _fpb) {
@@ -610,7 +610,7 @@ bool FAT32::recoverContiguousToNTFS(const std::string& path, HANDLE hDrive, cons
 std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> &lfnEntries, bool &isLFN, unsigned char firstLetter){
     std::string fileName;
     if (!lfnEntries.empty()) {
-        std::cout << "Lay ten dai" << std::endl;
+       
         isLFN = true;
         for (auto it = lfnEntries.rbegin(); it != lfnEntries.rend(); ++it) {
             fileName += *it;
@@ -669,8 +669,6 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) 
                 std::string fileName = getFileName(_fpb, lfnEntries, isLFN, firstLetter);
                 
                
-                
-                
                 if (fileName == target) {
                     if(state){
                         std::cout << "File found. Recovering file entry..." << std::endl;
@@ -750,6 +748,7 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) 
                             }
                            
                         }else{
+                            std::cout << "Recovering short files..."  << std::endl;
                             if (!markClusterEOF(hDrive, _bpb, startingCluster)) {
                                 std::cerr << "Failed to mark cluster " << startingCluster << " as EOF." << std::endl;
                             }
