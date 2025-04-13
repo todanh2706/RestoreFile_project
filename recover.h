@@ -151,7 +151,7 @@ public:
         //các hàm khôi phục entry phụ (tên file)
         std::string extractLFN(const BYTE fInfo[32]);
         std::string getShortFileName(DIR _fpb);
-        std::string getFileName(DIR _fpb, std::vector<std::string> lfnEntries,  bool &isLFN, unsigned char firstLetter);
+        std::string getFileName(DIR _fpb, std::vector<std::string> &lfnEntries,  bool &isLFN, unsigned char firstLetter);
         int getClusterCount(DIR _fpb, BPB _bpb, HANDLE hDrive);
         bool setCheckSum(BYTE sectorBuffer[512], int start);
         bool setOriginalEntries(BYTE sectorBuffer[512], bool &iLFN, int start);
