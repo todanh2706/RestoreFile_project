@@ -607,7 +607,7 @@ bool FAT32::recoverContiguousToNTFS(const std::string& path, HANDLE hDrive, cons
 }
 
 
-std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> lfnEntries, bool &isLFN, unsigned char firstLetter){
+std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> &lfnEntries, bool &isLFN, unsigned char firstLetter){
     std::string fileName;
     if (!lfnEntries.empty()) {
         isLFN = true;
@@ -626,6 +626,7 @@ std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> lfnEntries, bo
     size_t pos = fileName.find('\0');
     if (pos != std::string::npos)
         fileName = fileName.substr(0, pos);
+   
     return fileName;
 }
 
@@ -662,9 +663,8 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) 
        
             if (static_cast<unsigned char>(_fpb.fName[0]) == 0xE5 && hasValidAttribute(_fpb.state)) {
                 std::string fileName = getFileName(_fpb, lfnEntries, isLFN, firstLetter);
-
-                std::cout << fileName << std::endl;
-              
+               
+                
                 
                 if (fileName == target) {
                     if(state){
