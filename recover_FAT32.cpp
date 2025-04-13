@@ -610,15 +610,18 @@ bool FAT32::recoverContiguousToNTFS(const std::string& path, HANDLE hDrive, cons
 std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> &lfnEntries, bool &isLFN, unsigned char firstLetter){
     std::string fileName;
     if (!lfnEntries.empty()) {
+        std::cout << "Lay ten dai" << std::endl;
         isLFN = true;
         for (auto it = lfnEntries.rbegin(); it != lfnEntries.rend(); ++it) {
             fileName += *it;
         }
         lfnEntries.clear();
     } else {
-        fileName = (getShortFileName(_fpb));
+        std::cout << "Lay" << std::endl;
+        fileName = getShortFileName(_fpb);
        
     }
+    std::cout << fileName << std::endl;
     if(isLFN)
         fileName[0] = firstLetter;
     else
@@ -662,7 +665,9 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) 
             }
        
             if (static_cast<unsigned char>(_fpb.fName[0]) == 0xE5 && hasValidAttribute(_fpb.state)) {
+                
                 std::string fileName = getFileName(_fpb, lfnEntries, isLFN, firstLetter);
+                
                
                 
                 
@@ -765,7 +770,10 @@ void FAT32::recoverFile(HANDLE hDrive, BPB _bpb, std::string target, int state) 
                         recoverContiguousToNTFS(outputPath, hDrive, _bpb, startingCluster, _fpb.fSize);
                         return;
                     }
-            }
+                }
+            }else{
+                lfnEntries.clear();
+                isLFN = false;
             }
             
             if (_fpb.fName[0] == 0x00) {
