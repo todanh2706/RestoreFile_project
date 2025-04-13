@@ -617,7 +617,7 @@ std::string FAT32::getFileName(DIR _fpb, std::vector<std::string> lfnEntries, bo
         lfnEntries.clear();
     } else {
         fileName = (getShortFileName(_fpb));
-        return fileName;
+       
     }
     if(isLFN)
         fileName[0] = firstLetter;
